@@ -91,6 +91,8 @@ export interface Context {
   getCenter: (mesh: Mesh) => Vector3;
   ifcCamera: IfcCamera;
 
+  updateAspect: () => void;
+
   fitToFrame: () => void;
   toggleCameraControls: (active: boolean, options?: any) => void;
   addComponent: (component: Component) => void;

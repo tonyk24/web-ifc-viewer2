@@ -176,6 +176,20 @@ const handleKeyDown = async (event) => {
     viewer.plans.exitPlanView(true);
     viewer.edges.toggle('0');
   }
+  if (event.code === 'KeyS') {
+    const result = viewer.context.renderer.newScreenshot(false, 6000, 6000);
+    const link = document.createElement('a');
+    link.href = result;
+    link.download = 'Download.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+  if(event.code === 'KeyD') {
+    viewer.plans.currentPlan.plane.edges.visible = !viewer.plans.currentPlan.plane.edges.visible;
+    // const model =
+    // viewer.context.ifcCamera.cameraControls.fitTo()
+  }
 };
 
 window.onmousemove = viewer.IFC.prePickIfcItem;

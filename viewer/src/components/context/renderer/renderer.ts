@@ -5,7 +5,9 @@ import { IfcPostproduction } from './postproduction';
 
 export interface RendererAPI {
   domElement: HTMLElement;
+
   render(...args: any): void;
+
   setSize(width: number, height: number): void;
 }
 
@@ -63,14 +65,29 @@ export class IfcRenderer extends IfcComponent {
     this.postProductionRenderer.setSize(this.container.clientWidth, this.container.clientHeight);
   }
 
-  newScreenshot(usePostproduction = false) {
-    const scene = this.context.getScene();
-    const camera = this.context.getCamera();
-    this.renderer.render(scene, camera);
+  newScreenshot(usePostproduction = false, width?: number, height?: number) {
     const domElement = usePostproduction
       ? this.basicRenderer.domElement
       : this.postProductionRenderer.renderer.domElement;
-    return domElement.toDataURL();
+
+    const previousWidth = domElement.width;
+    const previousHeight = domElement.height;
+
+    // this.context.updateAspect();
+
+    const scene = this.context.getScene();
+    const camera = this.context.getCamera();
+    if (width && height) this.renderer.setSize(width, height);
+    this.context.ifcCamera.updateAspect();
+    this.renderer.render(scene, camera);
+    const result = domElement.toDataURL();
+
+    if (width && height) {
+      this.renderer.setSize(previousWidth, previousHeight);
+      this.context.ifcCamera.updateAspect();
+    }
+
+    return result;
   }
 
   private setupRenderers() {
@@ -84,6 +101,6 @@ export class IfcRenderer extends IfcComponent {
   }
 
   private restoreRendererBackgroundColor() {
-    this.basicRenderer.setClearColor(new Color(0,0,0), 0);
+    this.basicRenderer.setClearColor(new Color(0, 0, 0), 0);
   }
 }

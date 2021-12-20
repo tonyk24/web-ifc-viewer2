@@ -71,8 +71,10 @@ export class IfcContext implements Context {
   }
 
   getDimensions() {
-    const element = this.getContainerElement();
-    return new Vector2(element.clientWidth, element.clientHeight);
+    const domElement = this.renderer.usePostproduction
+      ? this.renderer.basicRenderer.domElement
+      : this.renderer.postProductionRenderer.renderer.domElement;
+    return new Vector2(domElement.clientWidth, domElement.clientHeight);
   }
 
   getClippingPlanes() {
