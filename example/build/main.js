@@ -89877,6 +89877,7 @@
                 ClippingEdges.basicEdges.removeFromParent();
                 ClippingEdges.basicEdges.geometry.dispose();
                 ClippingEdges.basicEdges = null;
+                ClippingEdges.basicEdges = new LineSegments();
             }
             if (!ClippingEdges.styles)
                 return;
@@ -89898,6 +89899,7 @@
                 style.material.dispose();
             });
             ClippingEdges.styles = null;
+            ClippingEdges.styles = {};
         }
         async updateEdges() {
             if (ClippingEdges.createDefaultIfcStyles) {
@@ -90091,13 +90093,15 @@
             if (!Number.isNaN(edges.generatorGeometry.attributes.position.array[0])) {
                 ClippingEdges.basicEdges.geometry = edges.generatorGeometry;
                 edges.mesh.geometry.fromLineSegments(ClippingEdges.basicEdges);
-                this.context.getScene().add(edges.mesh);
+                const parent = ClippingEdges.edgesParent || this.context.getScene();
+                parent.add(edges.mesh);
             }
         }
     }
     ClippingEdges.styles = {};
     ClippingEdges.forceStyleUpdate = false;
     ClippingEdges.createDefaultIfcStyles = true;
+    ClippingEdges.edgesParent = null;
     ClippingEdges.invisibleMaterial = new MeshBasicMaterial({ visible: false });
     ClippingEdges.defaultMaterial = new LineMaterial({ color: 0x000000, linewidth: 0.001 });
     // Helpers
@@ -90285,9 +90289,9 @@
                 this.updateMaterials();
             };
             this.deleteAllPlanes = () => {
-                this.planes.forEach((plane) => plane.removeFromScene());
-                this.planes = [];
-                this.updateMaterials();
+                while (this.planes.length > 0) {
+                    this.deletePlane(this.planes[0]);
+                }
             };
             this.pickPlane = () => {
                 const planeMeshes = this.planes.map((p) => p.planeMesh);
@@ -91389,18 +91393,21 @@
             const model = this.context.items.ifcModels.find((model) => model.modelID === modelID);
             if (!model)
                 return;
+            this.createFromMesh(name, model, lineMaterial, material);
+        }
+        createFromMesh(name, mesh, lineMaterial, material) {
             const planes = this.context.getClippingPlanes();
             lineMaterial.clippingPlanes = planes;
             if (material)
                 material.clippingPlanes = planes;
-            this.setupModelMaterials(model);
-            const geo = new EdgesGeometry(model.geometry, this.threshold);
+            this.setupModelMaterials(mesh);
+            const geo = new EdgesGeometry(mesh.geometry, this.threshold);
             lineMaterial.clippingPlanes = this.context.getClippingPlanes();
             this.edges[name] = {
                 edges: new LineSegments(geo, lineMaterial),
-                originalMaterials: model.material,
+                originalMaterials: mesh.material,
                 baseMaterial: material,
-                model,
+                model: mesh,
                 active: false
             };
         }
@@ -99134,8 +99141,21 @@
         }
         async initializePropertiesObject(modelID) {
             return {
-                0: await this.webIfc.GetCoordinationMatrix(modelID)
+                coordinationMatrix: await this.webIfc.GetCoordinationMatrix(modelID),
+                globalHeight: await this.getBuildingHeight(modelID)
             };
+        }
+        async getBuildingHeight(modelID) {
+            const building = await this.getBuilding(modelID);
+            const sitePlace = building.ObjectPlacement.PlacementRelTo.RelativePlacement.Location;
+            const transform = sitePlace.Coordinates.map((coord) => coord.value);
+            return transform[2];
+        }
+        async getBuilding(modelID) {
+            const ifc = this.loader.ifcManager;
+            const allBuildingsIDs = await ifc.getAllItemsOfType(modelID, IFCBUILDING, false);
+            const buildingID = allBuildingsIDs[0];
+            return ifc.getItemProperties(modelID, buildingID, true);
         }
         async getAllGeometriesIDs(modelID) {
             const geometriesIDs = new Set();
@@ -115257,18 +115277,55 @@
 
     // Setup loader
 
-    const lineMaterial = new LineBasicMaterial({ color: 0x555555 });
-    const baseMaterial = new MeshBasicMaterial({ color: 0xffffff, side: 2 });
+    new LineBasicMaterial({ color: 0x555555 });
+    new MeshBasicMaterial({ color: 0xffffff, side: 2 });
+    let meshes;
 
-    let first = true;
-    let model;
+    ClippingEdges.createDefaultIfcStyles = false;
 
     const loadIfc = async (event) => {
 
 
       // tests with glTF
-      // const file = event.target.files[0];
-      // const url = URL.createObjectURL(file);
+      const file = event.target.files[0];
+      const url = URL.createObjectURL(file);
+
+
+
+      const result = await viewer.GLTF.load(url);
+
+      meshes = [...result.children[0].children[0].children];
+      ClippingEdges.edgesParent = result.children[0].children[0];
+      const backMaterial = new MeshBasicMaterial({
+        color: 0xffffff,
+        polygonOffset: true,
+        polygonOffsetFactor: 1, // positive value pushes polygon further away
+        polygonOffsetUnits: 1,
+        side: 1,
+        clippingPlanes: viewer.context.getClippingPlanes()
+      });
+
+      meshes.forEach(mesh => {
+        const newMesh = new Mesh(mesh.geometry, backMaterial);
+        mesh.parent.add(newMesh);
+      });
+
+      meshes.forEach(mesh => {
+        const mat = mesh.material;
+        mesh.material = new MeshBasicMaterial({
+          map: mat.map,
+          polygonOffset: true,
+          polygonOffsetFactor: 1, // positive value pushes polygon further away
+          polygonOffsetUnits: 1
+        });
+        mat.dispose();
+      });
+
+      let counter = 0;
+      meshes.forEach(mesh => mesh.modelID = counter++);
+      viewer.context.items.ifcModels.push(...meshes);
+      viewer.context.items.pickableIfcModels.push(...meshes);
+
       // const result = await viewer.GLTF.exportIfcFileAsGltf(url);
       //
       // const link = document.createElement('a');
@@ -115280,39 +115337,40 @@
       //   link.click();
       //   }
       // )
-      //
+
       // link.remove();
 
-      const overlay = document.getElementById('loading-overlay');
-      const progressText = document.getElementById('loading-progress');
+      // __________________________________________________________
 
-      overlay.classList.remove('hidden');
-      progressText.innerText = `Loading`;
-
-      viewer.IFC.loader.ifcManager.setOnProgress((event) => {
-        const percentage = Math.floor((event.loaded * 100) / event.total);
-        progressText.innerText = `Loaded ${percentage}%`;
-      });
-
-      viewer.IFC.loader.ifcManager.parser.setupOptionalCategories({
-        [IFCSPACE]: false,
-        [IFCOPENINGELEMENT]: false
-      });
-
-      model = await viewer.IFC.loadIfc(event.target.files[0], false);
-      model.material.forEach(mat => mat.side = 2);
-
-      if(first) first = false;
-      else {
-        ClippingEdges.forceStyleUpdate = true;
-      }
-
-      // await createFill(model.modelID);
-      viewer.edges.create(`${model.modelID}`, model.modelID, lineMaterial, baseMaterial);
-
-      await viewer.shadowDropper.renderShadow(model.modelID);
-
-      overlay.classList.add('hidden');
+      // const overlay = document.getElementById('loading-overlay');
+      // const progressText = document.getElementById('loading-progress');
+      //
+      // overlay.classList.remove('hidden');
+      // progressText.innerText = `Loading`;
+      //
+      // viewer.IFC.loader.ifcManager.setOnProgress((event) => {
+      //   const percentage = Math.floor((event.loaded * 100) / event.total);
+      //   progressText.innerText = `Loaded ${percentage}%`;
+      // });
+      //
+      // viewer.IFC.loader.ifcManager.parser.setupOptionalCategories({
+      //   [IFCSPACE]: false,
+      //   [IFCOPENINGELEMENT]: false
+      // });
+      //
+      // model = await viewer.IFC.loadIfc(event.target.files[0], false);
+      // model.material.forEach(mat => mat.side = 2);
+      //
+      // if(first) first = false
+      // else {
+      //   ClippingEdges.forceStyleUpdate = true;
+      // }
+      //
+      // viewer.edges.create(`${model.modelID}`, model.modelID, lineMaterial, baseMaterial);
+      //
+      // await viewer.shadowDropper.renderShadow(model.modelID);
+      //
+      // overlay.classList.add('hidden');
 
     };
 
@@ -115329,14 +115387,23 @@
       if (event.code === 'Escape') {
         viewer.IFC.selector.unpickIfcItems();
       }
+      if (event.code === 'KeyF') {
+        const clippingPlanes = viewer.context.getClippingPlanes();
+        meshes.material = new MeshBasicMaterial({clippingPlanes});
+        const edges = new EdgesGeometry( meshes.geometry, 30 );
+        const line = new LineSegments( edges, new LineBasicMaterial( { color: 0x000000, clippingPlanes } ) );
+        viewer.context.getScene().add(line);
+      }
     };
 
-    window.onmousemove = () => viewer.IFC.selector.prePickIfcItem();
+    // window.onmousemove = () => viewer.IFC.selector.prePickIfcItem();
     window.onkeydown = handleKeyDown;
     window.ondblclick = async () => {
 
       if (viewer.clipper.active) {
         viewer.clipper.createPlane();
+        const edges = viewer.clipper.planes[0].edges;
+        await edges.newStyleFromMesh('default', meshes, new LineMaterial({color: 0x000000, linewidth: 0.003}));
       } else {
         const result = await viewer.IFC.selector.pickIfcItem(true);
         if (!result) return;
