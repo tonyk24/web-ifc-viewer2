@@ -1,4 +1,4 @@
-import { IfcViewerAPI } from 'web-ifc-viewer';
+import { CameraProjections, IfcViewerAPI, NavigationModes } from 'web-ifc-viewer';
 import { createSideMenuButton } from './utils/gui-creator';
 import {
   IFCSPACE, IFCOPENINGELEMENT, IFCWALLSTANDARDCASE, IFCWALL, IFCWINDOW, IFCCURTAINWALL, IFCMEMBER, IFCPLATE
@@ -61,31 +61,52 @@ const loadIfc = async (event) => {
   // });
   // result.removeFromParent();
 
+  const clippingPlanes = viewer.context.getClippingPlanes();
+
   const backMeshes = [];
   const backMaterial = new MeshBasicMaterial({
     color: 0xffffff,
+    // polygonOffset: true,
+    // polygonOffsetFactor: -10, // positive value pushes polygon further away
+    // polygonOffsetUnits: 1,
     polygonOffset: true,
-    polygonOffsetFactor: 1, // positive value pushes polygon further away
+    polygonOffsetFactor: 10, // positive value pushes polygon further away
     polygonOffsetUnits: 1,
     side: 1,
-    clippingPlanes: viewer.context.getClippingPlanes()
+    clippingPlanes
   })
 
   meshes.forEach(mesh => {
     const newMesh = new Mesh(mesh.geometry, backMaterial);
     mesh.parent.add(newMesh);
-  })
+  });
+
+  const meshWhiteMat = new MeshBasicMaterial({
+    // map: mat.map,
+    polygonOffset: true,
+    polygonOffsetFactor: 10, // positive value pushes polygon further away
+    polygonOffsetUnits: 1,
+  });
+
+  const lineMaterial = new LineBasicMaterial({
+    color: 0x444444,
+    clippingPlanes
+  });
 
   meshes.forEach(mesh => {
-    const mat = mesh.material;
-    mesh.material = new MeshBasicMaterial({
-      map: mat.map,
-      polygonOffset: true,
-      polygonOffsetFactor: 1, // positive value pushes polygon further away
-      polygonOffsetUnits: 1
-    });
-    mat.dispose();
+    const previousMaterial = mesh.material;
+    mesh.material = meshWhiteMat;
+    previousMaterial.dispose();
+
+    const geo = new EdgesGeometry( mesh.geometry, 30 ); // or WireframeGeometry
+    const mat = lineMaterial;
+    const wireframe = new LineSegments( geo, mat );
+    mesh.parent.add( wireframe );
   });
+
+
+
+
 
   let counter = 0;
   meshes.forEach(mesh => mesh.modelID = counter++);
@@ -157,8 +178,16 @@ const handleKeyDown = async (event) => {
     const clippingPlanes = viewer.context.getClippingPlanes();
     meshes.material = new MeshBasicMaterial({clippingPlanes});
     const edges = new EdgesGeometry( meshes.geometry, 30 );
-    const line = new LineSegments( edges, new LineBasicMaterial( { color: 0x000000, clippingPlanes } ) );
+
+    const line = new LineSegments( edges, new LineBasicMaterial( {
+      color: 0x000000,
+      clippingPlanes
+    } ) );
+
     viewer.context.getScene().add(line);
+  }
+  if (event.code === 'KeyO') {
+    viewer.context.ifcCamera.toggleProjection();
   }
 };
 
@@ -169,7 +198,7 @@ window.ondblclick = async () => {
   if (viewer.clipper.active) {
     viewer.clipper.createPlane();
     const edges = viewer.clipper.planes[0].edges;
-    await edges.newStyleFromMesh('default', meshes, new LineMaterial({color: 0x000000, linewidth: 0.003}));
+    await edges.newStyleFromMesh('default', meshes, new LineMaterial({color: 0x000000, linewidth: 0.003, polygonOffset: true, polygonOffsetFactor: -20, polygonOffsetUnits: 1}));
   } else {
     const result = await viewer.IFC.selector.pickIfcItem(true);
     if (!result) return;
