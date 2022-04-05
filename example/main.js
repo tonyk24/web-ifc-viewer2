@@ -86,7 +86,7 @@ const loadIfc = async (event) => {
   // await createFill(model.modelID);
   viewer.edges.create(`${model.modelID}`, model.modelID, lineMaterial, baseMaterial);
 
-  await viewer.shadowDropper.renderShadow(model.modelID);
+  // await viewer.shadowDropper.renderShadow(model.modelID);
 
   overlay.classList.add('hidden');
 
@@ -113,6 +113,7 @@ window.ondblclick = async () => {
 
   if (viewer.clipper.active) {
     viewer.clipper.createPlane();
+    viewer.context.getRenderer().clippingPlanes = viewer.context.getClippingPlanes();
   } else {
     const result = await viewer.IFC.selector.pickIfcItem(true);
     if (!result) return;

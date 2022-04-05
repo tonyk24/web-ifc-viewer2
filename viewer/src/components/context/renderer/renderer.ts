@@ -1,5 +1,8 @@
 import { Camera, Color, Vector2, WebGLRenderer } from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { IfcComponent } from '../../../base-types';
 import { IfcPostproduction } from './postproduction';
 import { IfcContext } from '../context';
@@ -19,7 +22,11 @@ export class IfcRenderer extends IfcComponent {
   renderer: RendererAPI = this.basicRenderer;
 
   postProductionActive = false;
+  composer: EffectComposer;
+  ssao: any = null;
+  renderPass: any = null;
 
+  private postproductionInitialized = false;
   private readonly container: HTMLElement;
   private readonly context: IfcContext;
 
@@ -33,6 +40,34 @@ export class IfcRenderer extends IfcComponent {
       this.basicRenderer.domElement
     );
     this.adjustRendererSize();
+    this.composer = new EffectComposer(this.basicRenderer);
+
+    window.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (event.code === 'KeyP') {
+        this.ssao.params.saoKernelRadius += 5;
+        console.log(this.ssao.params.saoKernelRadius);
+      }
+      if (event.code === 'KeyO') {
+        this.ssao.params.saoKernelRadius -= 5;
+        console.log(this.ssao.params.saoKernelRadius);
+      }
+      if (event.code === 'KeyI') {
+        this.ssao.params.saoScale += 0.1;
+        console.log(this.ssao.params.saoScale);
+      }
+      if (event.code === 'KeyU') {
+        this.ssao.params.saoScale -= 0.1;
+        console.log(this.ssao.params.saoScale);
+      }
+      if (event.code === 'KeyL') {
+        this.ssao.params.saoIntensity += 0.01;
+        console.log(this.ssao.params.saoIntensity);
+      }
+      if (event.code === 'KeyK') {
+        this.ssao.params.saoIntensity -= 0.01;
+        console.log(this.ssao.params.saoIntensity);
+      }
+    });
   }
 
   get usePostproduction() {
@@ -62,6 +97,18 @@ export class IfcRenderer extends IfcComponent {
     const scene = this.context.getScene();
     const camera = this.context.getCamera();
     this.renderer.render(scene, camera);
+    if (!this.postproductionInitialized) {
+      this.renderPass = new RenderPass(scene, camera);
+      this.composer.addPass(this.renderPass);
+      const sao = new SAOPass(scene, camera, false, true);
+      sao.params.saoKernelRadius = 10;
+      sao.params.saoScale = 10;
+      sao.params.saoIntensity = 0.02;
+      this.ssao = sao;
+      this.composer.addPass(this.ssao);
+      this.postproductionInitialized = true;
+    }
+    this.composer.render(_delta);
     this.renderer2D.render(scene, camera);
   }
 
@@ -104,7 +151,7 @@ export class IfcRenderer extends IfcComponent {
   }
 
   private setupRenderers() {
-    this.basicRenderer.localClippingEnabled = true;
+    // this.basicRenderer.localClippingEnabled = true;
     this.container.appendChild(this.basicRenderer.domElement);
 
     this.renderer2D.domElement.style.position = 'absolute';
